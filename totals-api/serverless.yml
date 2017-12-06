@@ -1,4 +1,4 @@
-service: result
+service: totals
 
 # frameworkVersion: "=X.X.X"
 
@@ -10,7 +10,6 @@ provider:
   region: us-east-1
   environment:
     DYNAMODB_TABLE: ${self:service}-${opt:stage, self:provider.stage}
-    
   iamRoleStatements:
     - Effect: Allow
       Action:
@@ -23,44 +22,55 @@ provider:
       Resource: "arn:aws:dynamodb:${opt:region, self:provider.region}:*:table/${self:provider.environment.DYNAMODB_TABLE}"
     - Effect: Allow
       Action:
-        - lambda:InvokeFunction
-      Resource: arn:aws:lambda:*:*:function:totals-${opt:stage, self:provider.stage}-increment
-    - Effect: Allow
-      Action:
         - sqs:DeleteMessage
-        - sqs:SendMessage
-        - sqs:GetQueueUrl
+        - sqs:ReceiveMessage
       Resource: arn:aws:sqs:*:*:totals-${opt:stage, self:provider.stage}-increment
 
 functions:
-  create:
-    handler: handler.create
-    name: ${self:service}-${opt:stage, self:provider.stage}-create
+  handleMessages:
+    handler: handler.handleMessages
+    name: ${self:service}-${opt:stage, self:provider.stage}-handleMessages
+    events:
+      - schedule:
+          rate: rate(1 minute)
+          enabled: false
+  increment:
+    handler: handler.increment
+    name: ${self:service}-${opt:stage, self:provider.stage}-increment
     events:
       - http:
-          path: result/create
+          path: totals/increment/{id}
           method: post
-          cors: true
-  update:
-    handler: handler.update
-    name: ${self:service}-${opt:stage, self:provider.stage}-update
-    events:
-      - http:
-          path: result/update/{id}
-          method: put
           cors: true
   get:
     handler: handler.get
     name: ${self:service}-${opt:stage, self:provider.stage}-get
     events:
       - http:
-          path: result/{id}
+          path: totals/{id}
           method: get
           cors: true
 
 resources:
   Resources:
-    ResultDynamoDbTable:
+    Messages:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: totals-${opt:stage, self:provider.stage}-increment
+        MessageRetentionPeriod: 1209600
+        VisibilityTimeout: 60
+        RedrivePolicy:
+          deadLetterTargetArn:
+            Fn::GetAtt:
+            - MessagesDeadLetterQueue
+            - Arn
+          maxReceiveCount: 10
+    MessagesDeadLetterQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: totals-${opt:stage, self:provider.stage}-increment-dead-letter-queue
+        MessageRetentionPeriod: 1209600
+    TotalsDynamoDbTable:
       Type: 'AWS::DynamoDB::Table'
       DeletionPolicy: Retain
       Properties:
@@ -76,4 +86,3 @@ resources:
           ReadCapacityUnits: 1
           WriteCapacityUnits: 1
         TableName: ${self:provider.environment.DYNAMODB_TABLE}
-        

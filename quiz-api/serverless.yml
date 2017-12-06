@@ -20,10 +20,15 @@ provider:
         - dynamodb:UpdateItem
         - dynamodb:DeleteItem
       Resource: "arn:aws:dynamodb:${opt:region, self:provider.region}:*:table/${self:provider.environment.DYNAMODB_TABLE}"
+    - Effect: Allow
+      Action:
+        - lambda:InvokeFunction
+      Resource: arn:aws:lambda:*:*:function:totals-${opt:stage, self:provider.stage}-init
 
 functions:
   create:
     handler: handler.create
+    name: ${self:service}-${opt:stage, self:provider.stage}-create
     events:
       - http:
           path: quiz/create
@@ -31,6 +36,7 @@ functions:
           cors: true
   update:
     handler: handler.update
+    name: ${self:service}-${opt:stage, self:provider.stage}-update
     events:
       - http:
           path: quiz/update/{id}
@@ -38,6 +44,7 @@ functions:
           cors: true
   get:
     handler: handler.get
+    name: ${self:service}-${opt:stage, self:provider.stage}-get
     events:
       - http:
           path: quiz/{id}
@@ -46,7 +53,7 @@ functions:
 
 resources:
   Resources:
-    TodosDynamoDbTable:
+    QuizDynamoDbTable:
       Type: 'AWS::DynamoDB::Table'
       DeletionPolicy: Retain
       Properties:
