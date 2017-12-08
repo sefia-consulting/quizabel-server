@@ -5,6 +5,30 @@ const randomstring = require('randomstring');
 const AWS = require('aws-sdk'); // eslint-disable-line import/no-extraneous-dependencies
 
 const dynamoDb = new AWS.DynamoDB.DocumentClient();
+var lambda = new AWS.Lambda();
+AWS.config.region = process.env.REGION;
+
+function initTotals(quiz) {
+  console.log(quiz);
+  var lParams = {
+    FunctionName: 'totals-'+process.env.STAGE+'-init', // the lambda function we are going to invoke
+    InvocationType: 'Event',       
+    Payload: JSON.stringify({body:JSON.stringify(quiz)})
+  };
+  console.log('initTotals:');
+  console.log(lParams);
+  lambda.invoke(lParams, function(err, data) {
+    console.log('done invoking init');
+    if (err) {
+      console.log(err);
+    } 
+    else {
+      console.log('initialized totals');
+      console.log(data);
+    }
+  });
+
+}
 
 module.exports.create = (event, context, callback) => {
   //console.log(event.body);
@@ -78,6 +102,7 @@ module.exports.create = (event, context, callback) => {
       },
       body: JSON.stringify(params.Item),
     };
+    initTotals(quiz);
     callback(null, response);
   });
 };
@@ -137,6 +162,7 @@ module.exports.update = (event, context, callback) => {
       },
       body: JSON.stringify(params.Item),
     };
+    initTotals(quiz);
     callback(null, response);
   });
 };

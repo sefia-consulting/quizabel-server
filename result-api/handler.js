@@ -9,7 +9,7 @@ const dynamoDb = new AWS.DynamoDB.DocumentClient();
 var QUEUE_URL = 'https://sqs.us-east-1.amazonaws.com/531557698256/totals-dev-increment';
 var sqs = new AWS.SQS({region : 'us-east-1'});
 var lambda = new AWS.Lambda();
-AWS.config.region = 'us-east-1';
+AWS.config.region = process.env.REGION;
 
 module.exports.create = (event, context, callback) => {
   //console.log(event.body);
@@ -99,7 +99,7 @@ module.exports.create = (event, context, callback) => {
     });
     */
     var lParams = {
-      FunctionName: 'totals-dev-increment', // the lambda function we are going to invoke
+      FunctionName: 'totals-'+process.env.STAGE+'-increment', // the lambda function we are going to invoke
       InvocationType: 'Event',       
       Payload: JSON.stringify({body:response.body})
     };

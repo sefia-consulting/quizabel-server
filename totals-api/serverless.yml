@@ -5,11 +5,12 @@ service: totals
 provider:
   name: aws
   runtime: nodejs6.10
-
   stage: dev
-  region: us-east-1
   environment:
     DYNAMODB_TABLE: ${self:service}-${opt:stage, self:provider.stage}
+    REGION: us-east-1
+    STAGE: dev
+  region: ${self:provider.environment.REGION}
   iamRoleStatements:
     - Effect: Allow
       Action:
@@ -34,6 +35,14 @@ functions:
       - schedule:
           rate: rate(1 minute)
           enabled: false
+  init:
+    handler: handler.init
+    name: ${self:service}-${opt:stage, self:provider.stage}-init
+    events:
+      - http:
+          path: totals/init
+          method: post
+          cors: true
   increment:
     handler: handler.increment
     name: ${self:service}-${opt:stage, self:provider.stage}-increment

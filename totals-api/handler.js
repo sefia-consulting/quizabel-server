@@ -7,6 +7,7 @@ const dynamoDb = new AWS.DynamoDB.DocumentClient();
 var QUEUE_URL = 'https://sqs.us-east-1.amazonaws.com/531557698256/totals-dev-increment';
 var sqs = new AWS.SQS({region : 'us-east-1'});
 
+
 function incrementQuizTotals(result, callback) {
   const id = result.quizId;
   var incResponses = result.responses ? result.responses.length : 0,
@@ -55,39 +56,37 @@ function incrementQuizTotals(result, callback) {
       }
     }
   }
-
   console.log(dynamoParams);
-
   // write the todo to the database
   dynamoDb.update(dynamoParams, (error, data) => {
-  // handle potential errors
-  if (error) {
-    console.error(error);
-    if (callback) {
-      callback(null, {
-        statusCode: error.statusCode || 501,
-        headers: { 
-          'Content-Type': 'text/plain',
-          "Access-Control-Allow-Origin" : "*" // Required for CORS support to work 
-        },
-        body: 'Couldn\'t update the totals.',
-      });  
+    // handle potential errors
+    if (error) {
+      console.error(error);
+      if (callback) {
+        callback(null, {
+          statusCode: error.statusCode || 501,
+          headers: { 
+            'Content-Type': 'text/plain',
+            "Access-Control-Allow-Origin" : "*" // Required for CORS support to work 
+          },
+          body: 'Couldn\'t update the totals.',
+        });  
+      }
+      return;
     }
-    return;
-  }
 
-  // create a response
-  const response = {
-    statusCode: 200,
-    headers: { 
-      "Content-Type": "application/json; charset=utf-8",
-      "Access-Control-Allow-Origin" : "*" // Required for CORS support to work 
-    },
-    body: JSON.stringify(data.Item),
-  };
-  if (callback) {
-    callback(null, response);
-  }
+    // create a response
+    const response = {
+      statusCode: 200,
+      headers: { 
+        "Content-Type": "application/json; charset=utf-8",
+        "Access-Control-Allow-Origin" : "*" // Required for CORS support to work 
+      },
+      body: JSON.stringify(data.Item),
+    };
+    if (callback) {
+      callback(null, response);
+    }
   });
 }
 
@@ -106,114 +105,8 @@ function handleQuizResult(result, callback) {
     return;
   }
   console.log(id);
-  // create record if it doesnt exist
-  dynamoDb.get({ TableName: process.env.DYNAMODB_TABLE, Key: { id: id } }, (error, data) => {
-    // handle potential errors
-    if (!data.Item || !data.Item.id) {
-      var totals = {
-        "id": id,
-        "responseCount": 0,
-        "totalResponses": 0,
-        "totalPoints": 0,
-        "totalTime": 0,
-        "totalCorrectPoints": 0,
-        "totalCorrectResponses": 0,
-        "questions": {}
-      }
-      for (var i = 0; result.responses && i < result.responses.length; i++) {
-        var resultResponse = result.responses[i],
-        code = 'Question'+resultResponse.code;
-        totals.questions[code] = {
-          "totalPoints":0,
-          "totalCorrectPoints":0,
-          "totalResponses":0,
-          "totalCorrectResponses":0,
-          "answers": {}
-        };
-          
-        for (var j = 0; resultResponse.answers && j < resultResponse.answers.length; j++) {
-          var responseAnswer = resultResponse.answers[j],
-          aCode = 'Answer'+responseAnswer.code;
-          totals.questions[code].answers[aCode] = {
-            "totalResponses":0,
-            "totalCorrectResponses":0  
-          };
-        }          
-      }
-      dynamoDb.put({ TableName: process.env.DYNAMODB_TABLE, Key: { id: id }, Item: totals}, (error, data) => {
-        if (error) {
-          console.error(error);
-          if (callback) {
-            callback(null, {
-              statusCode: error.statusCode || 501,
-              headers: { 
-                'Content-Type': 'text/plain',
-                "Access-Control-Allow-Origin" : "*" // Required for CORS support to work 
-              },
-              body: 'Couldn\'t add new totals.',
-            });  
-          }
-          return;
-        }
-        else {
-          if (result.noIncrement != true)
-            incrementQuizTotals(result, callback);
-        }
-      });
-    }
-    else {
-      const updateParams = {
-        TableName: process.env.DYNAMODB_TABLE,
-        Key: { id: id },
-        UpdateExpression: "set updated = :ts",
-        ExpressionAttributeValues:{ ":ts":new Date().getTime()},
-        ReturnValues:"UPDATED_NEW"
-      };
-  
-      for (var i = 0; result.responses && i < result.responses.length; i++) {
-        var resultResponse = result.responses[i],
-            code = 'Question'+resultResponse.code,
-            qHash = {
-              "totalPoints":0,
-              "totalCorrectPoints":0,
-              "totalResponses":0,
-              "totalCorrectResponses":0,
-              "answers": {}
-            };
-        for (var j = 0; resultResponse.answers && j < resultResponse.answers.length; j++) {
-          var responseAnswer = resultResponse.answers[j],
-              aCode = 'Answer'+responseAnswer.code;
-          qHash.answers[aCode] = {
-            "totalResponses":0,
-            "totalCorrectResponses":0
-          };
-        }
-        updateParams.UpdateExpression += (', questions.'+code+' = if_not_exists(questions.'+code+', :'+code+'Hash)');
-        updateParams.ExpressionAttributeValues[':'+code+'Hash'] = qHash
-      }
-      console.log(updateParams);
-      // write the todo to the database
-      dynamoDb.update(updateParams, (error, data) => {
-         // handle potential errors
-        if (error) {
-          console.error(error);
-          if (callback) {
-            callback(null, {
-              statusCode: error.statusCode || 501,
-              headers: { 
-                'Content-Type': 'text/plain',
-                "Access-Control-Allow-Origin" : "*" // Required for CORS support to work 
-              },
-              body: 'Couldn\'t update the totals.',
-            });  
-          }
-          return;
-        }      
-        if (result.noIncrement != true)
-          incrementQuizTotals(result, callback);
-      });
-    }
-  });
+  incrementQuizTotals(result, callback);
+
 }
 
 module.exports.handleMessages = (event, context, callback) => {
@@ -254,18 +147,154 @@ module.exports.init = (event, context, callback) => {
   console.log(event);  
   console.log(context);  
   const timestamp = new Date().getTime();
-  var newBody = event.body.replace(/""/g, 'null');
-  console.log(newBody);  
-  const quiz = JSON.parse(newBody);
-  //const id = event.pathParameters.id;
-  const result = {
-    id:quiz.id,
-    noIncrement:true,    
-    responses:quiz.questions
+  console.log(event.body);
+  const quiz = event.body instanceof String ? JSON.parse(event.body) : event.body; //this is the updated quiz
+  const id = quiz.id;
+  if (!quiz || !id) {
+    console.error('Validation Failed');
+    callback(null, {
+      statusCode: 400,
+      headers: { 
+        'Content-Type': 'text/plain',
+        "Access-Control-Allow-Origin" : "*" // Required for CORS support to work 
+      },
+      body: 'Couldn\'t update the totals.'
+    });
+    return;
   }
-  handleQuizResult(result, callback);
-};
-
+  console.log(id);
+  // look up to see if there is an existing totals record
+  dynamoDb.get({ TableName: process.env.DYNAMODB_TABLE, Key: { id: id } }, (error, data) => {
+    // handle potential errors
+    var existingTotals = data ? data.Item : null;
+    // if there is now totals record then create a new one with hashes for all questions and answers
+    if (!existingTotals) {
+      var totals = {
+        "id": id,
+        "responseCount": 0,
+        "totalResponses": 0,
+        "totalPoints": 0,
+        "totalTime": 0,
+        "totalCorrectPoints": 0,
+        "totalCorrectResponses": 0,
+        "questions": {}
+      }
+      for (var qKey in quiz.questions) {
+        var question = quiz.questions[qKey],
+          code = 'Question'+question.code;
+        totals.questions[code] = {
+          "totalPoints":0,
+          "totalCorrectPoints":0,
+          "totalResponses":0,
+          "totalCorrectResponses":0,
+          "answers": {}
+        };          
+        for (var aKey in question.answers) {
+          var answer = question.answers[aKey],
+            aCode = 'Answer'+answer.code;
+          totals.questions[code].answers[aCode] = {
+            "totalResponses":0,
+            "totalCorrectResponses":0  
+          };
+        }          
+      }
+      dynamoDb.put({ TableName: process.env.DYNAMODB_TABLE, Key: { id: id }, Item: totals}, (error, data) => {
+        if (error) {
+          console.error(error);
+          if (callback) {
+            callback(null, {
+              statusCode: error.statusCode || 501,
+              headers: { 
+                'Content-Type': 'text/plain',
+                "Access-Control-Allow-Origin" : "*" // Required for CORS support to work 
+              },
+              body: 'Couldn\'t add new totals.',
+            });  
+          }
+          return;
+        }
+      });
+    }
+    else {
+      const updateParams = {
+        TableName: process.env.DYNAMODB_TABLE,
+        Key: { id: id },
+        UpdateExpression: "set updated = :ts",
+        ExpressionAttributeValues:{ ":ts":new Date().getTime()},
+        ReturnValues:"UPDATED_NEW"
+      };
+  
+      for (var qKey in quiz.questions) {
+        var question = quiz.questions[qKey],
+          code = 'Question'+question.code;
+        if (!existingTotals.questions[code]) {
+          // if question isn't there then add a new hash for it
+          var qHash = {
+            "totalPoints":0,
+            "totalCorrectPoints":0,
+            "totalResponses":0,
+            "totalCorrectResponses":0,
+            "answers": {}
+          };
+          for (var aKey in question.answers) {
+            var answer = question.answers[aKey],
+              aCode = 'Answer'+answer.code;
+            qHash.answers[aCode] = {
+              "totalResponses":0,
+              "totalCorrectResponses":0
+            };
+          }
+          updateParams.UpdateExpression += (', questions.'+code+' = :'+code+'Hash');
+          updateParams.ExpressionAttributeValues[':'+code+'Hash'] = qHash;
+        }
+        else {
+          // loop through answers and make sure there is a hash for each
+          for (var aKey in question.answers) {
+            var answer = question.answers[aKey],
+              aCode = 'Answer'+answer.code;
+            if (!existingTotals.questions[code].answers[aCode]) {
+              updateParams.UpdateExpression += (', questions.'+code+'.answers.'+aCode+' = :'+aCode+'Hash');
+              updateParams.ExpressionAttributeValues[':'+aCode+'Hash'] = {
+                "totalResponses":0,
+                "totalCorrectResponses":0
+              };
+            }
+          }
+        }
+      }
+      console.log(updateParams);
+      // write the todo to the database
+      dynamoDb.update(updateParams, (error, data) => {
+         // handle potential errors
+        if (error) {
+          console.error(error);
+          if (callback) {
+            callback(null, {
+              statusCode: error.statusCode || 501,
+              headers: { 
+                'Content-Type': 'text/plain',
+                "Access-Control-Allow-Origin" : "*" // Required for CORS support to work 
+              },
+              body: 'Couldn\'t init the totals.',
+            });  
+          }
+          return;
+        }
+        else {
+          const response = {
+            statusCode: 200,
+            headers: { 
+              "Content-Type": "application/json; charset=utf-8",
+              "Access-Control-Allow-Origin" : "*" // Required for CORS support to work 
+            },
+            body: JSON.stringify(data.Item),
+          };
+          callback(null, response);        
+        }    
+      });
+    }
+  });
+}
 
 module.exports.get = (event, context, callback) => {
   const id = event.pathParameters.id
