@@ -6,6 +6,31 @@ const AWS = require('aws-sdk'); // eslint-disable-line import/no-extraneous-depe
 const dynamoDb = new AWS.DynamoDB.DocumentClient();
 var QUEUE_URL = 'https://sqs.us-east-1.amazonaws.com/531557698256/totals-dev-increment';
 var sqs = new AWS.SQS({region : 'us-east-1'});
+var lambda = new AWS.Lambda();
+AWS.config.region = process.env.REGION;
+
+function getQuiz(id, callback) {
+  console.log('getting quiz '+id);
+  var lParams = {
+    FunctionName: 'quiz-'+process.env.STAGE+'-get', // the lambda function we are going to invoke
+    InvocationType: 'Event',       
+    Payload: JSON.stringify({pathParameters:{id:id}})
+  };
+  console.log(lParams);
+  lambda.invoke(lParams, function(err, data) {
+    console.log('done invoking init');
+    if (err) {
+      console.log(err);
+    } 
+    else {
+      var quiz = JSON.parse(data.body);
+      callback(quiz);
+      console.log('initialized totals');
+      console.log(data);
+    }
+  });
+
+}
 
 
 function incrementQuizTotals(result, callback) {
@@ -297,8 +322,9 @@ module.exports.init = (event, context, callback) => {
 }
 
 module.exports.get = (event, context, callback) => {
-  const id = event.pathParameters.id
-  if (!id) {
+  const id = event.pathParameters.id,
+        admin = false; // check IAM for admin?        
+   if (!id) {
     console.error('Validation Failed');
     callback(null, {
       statusCode: 400,
@@ -306,9 +332,22 @@ module.exports.get = (event, context, callback) => {
         'Content-Type': 'text/plain',
         "Access-Control-Allow-Origin" : "*" // Required for CORS support to work         
       },
-      body: 'Couldn\'t get the quiz because id is missing.',
+      body: 'Couldn\'t get the quiz because id is missing.'
     });
     return;
+  }
+  var quiz = getQuiz(id);
+  if (!quiz.showTotals) {
+    console.error('Quiz does not allow totals to be shown');
+    callback(null, {
+      statusCode: 401,
+      headers: { 
+        'Content-Type': 'text/plain',
+        "Access-Control-Allow-Origin" : "*" // Required for CORS support to work         
+      },
+      body: 'Quiz does not allow totals to be shown'
+    });
+    return;    
   }
   console.log(id);
   const params = {
